@@ -1,0 +1,93 @@
+---
+title: "Predicting GDP from Number of McDonalds'"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Can we use the number of McDonals' in a country to predict its GDP?
+```{r, message=FALSE,warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(rgdal)
+```
+
+
+First we are going to read in the data.
+```{r}
+# Scraped from wikipedia
+md_data <- read.csv("McDonalds.csv")[-1]
+
+# From https://www.kaggle.com/fernandol/countries-of-the-world
+countries_data <- read.csv("countries of the world.csv")
+```
+
+
+Some rearanging must be done to line up the datasets.
+```{r}
+countries_data <- countries_data %>%
+  mutate(Country = str_trim(Country))
+Name <- as.character(countries_data$Country[!(countries_data$Country %in% md_data$Name)])
+num_new <- length(Name)
+First_opened <- rep(NA, num_new)
+First_location <- rep(NA, num_new)
+Count <- rep(0, num_new)
+Source <- rep(NA, num_new)
+People_per_md <- rep(NA, num_new)
+Notes <- rep(NA, num_new)
+
+more_countries <- data.frame(Name,First_opened, First_location, Count, Source, People_per_md, Notes)
+md_data <- rbind(md_data, more_countries)
+md_data <- md_data[md_data$Name %in% countries_data$Country,]
+
+countries_data$Country <- countries_data$Country %>%
+  str_replace("Viet Nam", "Vietnam") %>%
+  str_replace("Trinidad and Tobago", "Trinidad & Tobago") %>%
+  str_replace("South Korea", "Korea, South")
+
+countries_data <- countries_data %>%
+  mutate(Name = Country)
+
+countries_data$md_count <- merge(x=countries_data, y=md_data, by= "Name", all.x = TRUE)$Count
+countries_data$GDP <- countries_data$Population*(countries_data$GDP....per.capita./1000000)
+```
+
+The datasets were very mismatched. Sorry for the wall of code.
+
+Let's plot a density of McDonald's count and GDP to get an idea of what we are dealing with.
+```{r, warning=FALSE}
+# md count
+countries_data %>%
+  ggplot(aes(md_count)) +
+  ggtitle("Distribution of McDonalds'")+
+  geom_density()
+# gdp
+countries_data %>%
+  ggplot(aes(GDP)) +
+  ggtitle("Distribution of Total GDP")+
+  xlab(" Total GDP (Millions of Dollars)") +
+  geom_density()
+```
+
+Both of these plots are very skewed. Luckily they seem skewed in a similar matter. This gives us hope for a not-terrible prediction model.
+
+
+Finally its time to construct a model.
+```{r}
+# Predict total GDP from the number of McDonalds'
+my_model <- countries_data %>%
+  lm(GDP ~ md_count, data=.)
+summary(my_model)
+```
+
+From this linear model summary, we can see that 82.77% of the variation in total GDP can be explained by the number of McDonalds'. Each increase in McDonald's franchise locations is associated with an increase in GDP by 875.12 million dollars. Let's plot this regression line to see what it looks like.
+```{r, warning=FALSE}
+countries_data %>%
+  ggplot(aes(x = md_count, y = GDP)) +
+  geom_point() +
+  stat_smooth(method = "lm")
+```
+
+Overall, the GDP is fairly well described by McDonald's count. The single point with nearly 15,000 McDonalds' is of course the United States. Lucky for us, it makes up for all those Big Macs with a very large total GDP.
+
